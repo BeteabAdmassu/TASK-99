@@ -51,7 +51,7 @@ router.delete(
   authMiddleware, orgScopeMiddleware, requireRole('admin'), writeRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await carouselService.deleteCarouselItem(req.params.orgId, req.params.id);
+      await carouselService.deleteCarouselItem(req.params.orgId, req.params.id, req.user!.id);
       res.status(204).send();
     } catch (err) { next(err); }
   },

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const bulkActionSchema = z.object({
-  action: z.enum(['delete', 'lock', 'archive', 'move']),
+  action: z.enum(['delete', 'lock', 'archive']),
   resourceType: z.enum(['thread', 'reply']),
   resourceIds: z.array(z.string().uuid()).min(1).max(100),
 });

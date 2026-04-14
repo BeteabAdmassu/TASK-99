@@ -117,7 +117,7 @@ export async function updateCarouselItem(
   return updated;
 }
 
-export async function deleteCarouselItem(orgId: string, id: string) {
+export async function deleteCarouselItem(orgId: string, id: string, actorId: string) {
   const existing = await prisma.carouselItem.findFirst({
     where: { id, organizationId: orgId },
   });
@@ -127,6 +127,15 @@ export async function deleteCarouselItem(orgId: string, id: string) {
   }
 
   await prisma.carouselItem.delete({ where: { id } });
+
+  await createAuditLog({
+    organizationId: orgId,
+    actorId,
+    action: 'config_delete',
+    resourceType: 'carousel_item',
+    resourceId: id,
+    details: { title: existing.title },
+  });
 
   return { success: true };
 }

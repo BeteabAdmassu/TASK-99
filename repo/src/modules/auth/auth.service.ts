@@ -6,6 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 import { decryptField } from '../../config/encryption';
 import { UnauthorizedError, LockedError, NotFoundError } from '../../utils/errors';
+import { maskUsername } from '../../utils/masks';
 import { createAuditLog } from '../audit/audit.service';
 
 export async function login(
@@ -25,7 +26,7 @@ export async function login(
   });
 
   if (!user) {
-    logger.warn({ username, organizationId }, 'Login attempt for non-existent user');
+    logger.warn({ username: maskUsername(username), orgId: organizationId.slice(0, 8) }, 'Login attempt for non-existent user');
     throw new UnauthorizedError('Invalid username or password');
   }
 

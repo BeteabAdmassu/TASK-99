@@ -49,31 +49,44 @@ export async function createThread(
     throw new NotFoundError('Subsection not found');
   }
 
-  const thread = await prisma.thread.create({
-    data: {
-      organizationId: orgId,
-      subsectionId: data.subsectionId,
-      authorId: userId,
-      title: data.title,
-      body: data.body,
-    },
-    include: {
-      author: { select: { id: true, username: true } },
-      threadTags: { include: { tag: true } },
-    },
+  // Validate all tag IDs before any mutation so an invalid tag never leaves an orphaned thread.
+  if (data.tagIds && data.tagIds.length > 0) {
+    const validTags = await prisma.tag.findMany({
+      where: { id: { in: data.tagIds }, organizationId: orgId },
+      select: { id: true },
+    });
+    if (validTags.length !== data.tagIds.length) {
+      throw new BusinessRuleError(400, 'INVALID_TAG', 'One or more tag IDs do not belong to this organization');
+    }
+  }
+
+  // Create thread and its tag associations atomically.
+  const thread = await prisma.$transaction(async (tx) => {
+    const newThread = await tx.thread.create({
+      data: {
+        organizationId: orgId,
+        subsectionId: data.subsectionId,
+        authorId: userId,
+        title: data.title,
+        body: data.body,
+      },
+      include: {
+        author: { select: { id: true, username: true } },
+        threadTags: { include: { tag: true } },
+      },
+    });
+
+    if (data.tagIds && data.tagIds.length > 0) {
+      await tx.threadTag.createMany({
+        data: data.tagIds.map((tagId) => ({ threadId: newThread.id, tagId })),
+        skipDuplicates: true,
+      });
+    }
+
+    return newThread;
   });
 
   logger.info({ orgId, threadId: thread.id }, 'Thread created');
-
-  if (data.tagIds && data.tagIds.length > 0) {
-    await prisma.threadTag.createMany({
-      data: data.tagIds.map((tagId) => ({
-        threadId: thread.id,
-        tagId,
-      })),
-      skipDuplicates: true,
-    });
-  }
 
   await prisma.eventLog.create({
     data: {
@@ -245,19 +258,29 @@ export async function updateThread(
   });
 
   if (data.tagIds !== undefined) {
-    await prisma.threadTag.deleteMany({
-      where: { threadId },
-    });
-
+    // Validate replacement tags before touching the existing mappings.
+    // This prevents deleteMany from running if the new tags are invalid,
+    // which would otherwise leave the thread with no tags at all.
     if (data.tagIds.length > 0) {
-      await prisma.threadTag.createMany({
-        data: data.tagIds.map((tagId) => ({
-          threadId,
-          tagId,
-        })),
-        skipDuplicates: true,
+      const validTags = await prisma.tag.findMany({
+        where: { id: { in: data.tagIds }, organizationId: orgId },
+        select: { id: true },
       });
+      if (validTags.length !== data.tagIds.length) {
+        throw new BusinessRuleError(400, 'INVALID_TAG', 'One or more tag IDs do not belong to this organization');
+      }
     }
+
+    // Delete existing mappings and create new ones atomically.
+    await prisma.$transaction(async (tx) => {
+      await tx.threadTag.deleteMany({ where: { threadId } });
+      if (data.tagIds!.length > 0) {
+        await tx.threadTag.createMany({
+          data: data.tagIds!.map((tagId) => ({ threadId, tagId })),
+          skipDuplicates: true,
+        });
+      }
+    });
 
     const refreshed = await prisma.thread.findUnique({
       where: { id: threadId },

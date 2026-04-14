@@ -23,7 +23,32 @@ interface PaginationInput {
   limit?: string | number;
 }
 
+/** Check whether a user is effectively subscribed to a notification category.
+ *  - 'security' category is always subscribed (cannot be opted out).
+ *  - All other categories require an explicit opt-in record (default: not subscribed).
+ */
+async function isUserSubscribed(orgId: string, userId: string, category: string): Promise<boolean> {
+  if (category === 'security') return true;
+
+  const sub = await prisma.notificationSubscription.findUnique({
+    where: {
+      userId_organizationId_category: {
+        userId,
+        organizationId: orgId,
+        category,
+      },
+    },
+  });
+
+  // No explicit record → not subscribed (explicit opt-in required for non-security categories)
+  return sub !== null && sub.isSubscribed;
+}
+
 export async function createNotification(data: CreateNotificationData) {
+  const now = new Date();
+  const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null;
+  const isFutureScheduled = scheduledAt !== null && scheduledAt > now;
+
   const notification = await prisma.notification.create({
     data: {
       organizationId: data.orgId,
@@ -33,25 +58,27 @@ export async function createNotification(data: CreateNotificationData) {
       body: data.body,
       referenceType: data.referenceType ?? null,
       referenceId: data.referenceId ?? null,
-      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
+      scheduledAt,
       status: 'pending',
     },
   });
 
-  // Try to deliver immediately
-  try {
-    await prisma.notification.update({
-      where: { id: notification.id },
-      data: {
-        status: 'delivered',
-        deliveredAt: new Date(),
-      },
-    });
+  // Only attempt immediate delivery for unscheduled or already-due notifications.
+  // Future-scheduled notifications remain pending until the scheduler processes them.
+  if (!isFutureScheduled) {
+    try {
+      await prisma.notification.update({
+        where: { id: notification.id },
+        data: {
+          status: 'delivered',
+          deliveredAt: now,
+        },
+      });
 
-    logger.info({ notificationId: notification.id, userId: data.userId }, 'Notification delivered');
-  } catch (error) {
-    // Leave as pending if delivery fails
-    logger.warn({ notificationId: notification.id, error }, 'Notification delivery failed, left as pending');
+      logger.info({ notificationId: notification.id, userId: data.userId }, 'Notification delivered');
+    } catch (error) {
+      logger.warn({ notificationId: notification.id, error }, 'Notification delivery failed, left as pending');
+    }
   }
 
   return notification;
@@ -77,6 +104,13 @@ export async function createForNewReply(
     return null;
   }
 
+  // Respect subscription preference for 'forum' category
+  const subscribed = await isUserSubscribed(orgId, thread.authorId, 'forum');
+  if (!subscribed) {
+    logger.info({ userId: thread.authorId, category: 'forum' }, 'Notification suppressed: user opted out');
+    return null;
+  }
+
   const notification = await createNotification({
     orgId,
     userId: thread.authorId,
@@ -96,6 +130,16 @@ export async function createForModeration(
   action: string,
   details: string | Record<string, unknown>,
 ) {
+  // Moderation notifications use the 'moderation' category and respect the user's
+  // subscription preference. If the platform needs specific moderation actions to be
+  // mandatory, those callers should invoke createNotification directly with type
+  // 'security_alert' instead of going through this helper.
+  const subscribed = await isUserSubscribed(orgId, userId, 'moderation');
+  if (!subscribed) {
+    logger.info({ userId, category: 'moderation' }, 'Notification suppressed: user opted out of moderation');
+    return null;
+  }
+
   const body = typeof details === 'string' ? details : JSON.stringify(details);
   const notification = await createNotification({
     orgId,
@@ -123,6 +167,12 @@ export async function createForAnnouncement(
   const notifications = [];
 
   for (const user of users) {
+    // Respect subscription preference for 'announcement' category
+    const subscribed = await isUserSubscribed(orgId, user.id, 'announcement');
+    if (!subscribed) {
+      continue;
+    }
+
     try {
       const notification = await createNotification({
         orgId,

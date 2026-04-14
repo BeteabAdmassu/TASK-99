@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError } from '../utils/errors';
+import { env } from '../config/env';
 
 export function requireRole(...roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -16,4 +17,16 @@ export function requireRole(...roles: string[]) {
 
     next(new ForbiddenError('Insufficient permissions'));
   };
+}
+
+export function requirePlatformAdmin(req: Request, _res: Response, next: NextFunction): void {
+  if (
+    !req.user ||
+    req.user.role !== 'admin' ||
+    req.user.organizationId !== env.PLATFORM_ORG_ID
+  ) {
+    next(new ForbiddenError('Organization creation requires platform administrator privileges'));
+    return;
+  }
+  next();
 }

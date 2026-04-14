@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/database';
 import { logger } from '../../config/logger';
 import { NotFoundError, ConflictError, ForbiddenError, BusinessRuleError } from '../../utils/errors';
@@ -124,7 +125,7 @@ export async function updateVenue(
   return updated;
 }
 
-export async function deleteVenue(orgId: string, venueId: string) {
+export async function deleteVenue(orgId: string, venueId: string, actorId: string) {
   const existing = await prisma.venue.findFirst({
     where: { id: venueId, organizationId: orgId },
   });
@@ -137,7 +138,16 @@ export async function deleteVenue(orgId: string, venueId: string) {
     where: { id: venueId },
   });
 
-  logger.info({ venueId, orgId }, 'Venue deleted');
+  await createAuditLog({
+    organizationId: orgId,
+    actorId,
+    action: 'config_delete',
+    resourceType: 'venue',
+    resourceId: venueId,
+    details: { name: existing.name },
+  });
+
+  logger.info({ venueId, orgId, actorId }, 'Venue deleted');
 }
 
 export async function createBooking(
@@ -161,7 +171,7 @@ export async function createBooking(
   const startTime = new Date(data.startTime);
   const endTime = new Date(data.endTime);
 
-  const booking = await prisma.$transaction(async (tx) => {
+  const booking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Check for overlapping confirmed bookings
     const conflicting = await tx.venueBooking.findFirst({
       where: {
@@ -289,7 +299,7 @@ export async function updateBooking(
     if (newStartTime) updateData.startTime = newStartTime;
     if (newEndTime) updateData.endTime = newEndTime;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const conflicting = await tx.venueBooking.findFirst({
         where: {
           venueId: booking.venueId,

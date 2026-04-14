@@ -5,7 +5,7 @@ import { parsePagination, buildPaginatedResponse } from '../../utils/pagination'
 import { createAuditLog } from '../audit/audit.service';
 
 interface BulkActionData {
-  action: 'delete' | 'lock' | 'archive' | 'move';
+  action: 'delete' | 'lock' | 'archive';
   resourceType: 'thread' | 'reply';
   resourceIds: string[];
 }
@@ -71,6 +71,10 @@ export async function bulkAction(
             where: { id: resourceId },
             data: { isArchived: true },
           });
+        } else {
+          failed++;
+          errors.push({ resourceId, message: `Action '${action}' is not supported` });
+          continue;
         }
 
         processed++;
@@ -275,6 +279,7 @@ export async function permanentDelete(
   orgId: string,
   itemType: string,
   itemId: string,
+  actorId: string,
 ) {
   if (itemType !== 'thread' && itemType !== 'reply') {
     throw new ValidationError('Invalid item type. Must be "thread" or "reply".');
@@ -304,6 +309,7 @@ export async function permanentDelete(
 
   await createAuditLog({
     organizationId: orgId,
+    actorId,
     action: 'content_purged',
     resourceType: itemType,
     resourceId: itemId,

@@ -51,7 +51,7 @@ router.delete(
   authMiddleware, orgScopeMiddleware, requireRole('admin'), writeRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await moderationService.permanentDelete(req.params.orgId, req.params.itemType, req.params.itemId);
+      await moderationService.permanentDelete(req.params.orgId, req.params.itemType, req.params.itemId, req.user!.id);
       res.status(204).send();
     } catch (err) { next(err); }
   },

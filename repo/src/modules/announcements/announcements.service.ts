@@ -144,7 +144,7 @@ export async function updateAnnouncement(
   return updated;
 }
 
-export async function deleteAnnouncement(orgId: string, id: string) {
+export async function deleteAnnouncement(orgId: string, id: string, actorId: string) {
   const existing = await prisma.announcement.findFirst({
     where: { id, organizationId: orgId },
   });
@@ -154,6 +154,15 @@ export async function deleteAnnouncement(orgId: string, id: string) {
   }
 
   await prisma.announcement.delete({ where: { id } });
+
+  await createAuditLog({
+    organizationId: orgId,
+    actorId,
+    action: 'config_delete',
+    resourceType: 'announcement',
+    resourceId: id,
+    details: { title: existing.title },
+  });
 
   return { success: true };
 }

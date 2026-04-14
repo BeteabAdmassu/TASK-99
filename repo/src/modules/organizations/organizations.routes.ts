@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { validate } from '../../middleware/validate';
 import { authMiddleware } from '../../middleware/auth';
-import { requireRole } from '../../middleware/rbac';
+import { requireRole, requirePlatformAdmin } from '../../middleware/rbac';
 import { orgScopeMiddleware } from '../../middleware/orgScope';
 import { writeRateLimiter } from '../../middleware/rateLimiter';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schema';
@@ -12,7 +12,7 @@ const router = Router();
 router.post(
   '/',
   authMiddleware,
-  requireRole('admin'),
+  requirePlatformAdmin,
   writeRateLimiter,
   validate({ body: createOrganizationSchema }),
   async (req: Request, res: Response, next: NextFunction) => {

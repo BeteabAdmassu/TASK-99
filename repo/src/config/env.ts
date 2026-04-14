@@ -19,6 +19,7 @@ const envSchema = z.object({
   DB_USER: z.string().default('civicforum'),
   DB_PASSWORD: z.string().default('civicforum_pass'),
   DB_NAME: z.string().default('civicforum'),
+  PLATFORM_ORG_ID: z.string().default('00000000-0000-0000-0000-000000000001'),
 });
 
 const parsed = envSchema.safeParse(process.env);
