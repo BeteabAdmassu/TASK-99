@@ -3,6 +3,7 @@ import { logger } from '../../config/logger';
 import { NotFoundError, ForbiddenError, BusinessRuleError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
+import { getAppConfig } from '../../config/appConfig';
 
 interface CreateThreadData {
   subsectionId: string;
@@ -362,23 +363,26 @@ export async function updateThreadState(
     });
 
     if (subsection) {
-      const pinnedCount = await prisma.thread.count({
-        where: {
-          organizationId: orgId,
-          isPinned: true,
-          deletedAt: null,
-          id: { not: threadId },
-          subsection: {
-            sectionId: subsection.sectionId,
+      const [pinnedCount, cfg] = await Promise.all([
+        prisma.thread.count({
+          where: {
+            organizationId: orgId,
+            isPinned: true,
+            deletedAt: null,
+            id: { not: threadId },
+            subsection: {
+              sectionId: subsection.sectionId,
+            },
           },
-        },
-      });
+        }),
+        getAppConfig(),
+      ]);
 
-      if (pinnedCount >= 3) {
+      if (pinnedCount >= cfg.maxPinnedThreadsPerSection) {
         throw new BusinessRuleError(
           400,
           'PINNED_LIMIT_REACHED',
-          'Maximum 3 pinned threads per section',
+          `Maximum ${cfg.maxPinnedThreadsPerSection} pinned threads per section`,
         );
       }
     }

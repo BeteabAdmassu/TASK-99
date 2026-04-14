@@ -14,4 +14,4 @@ echo "Running seed..."
 npx prisma db seed || echo "Seed already applied or skipped"
 
 echo "Starting server..."
-exec node dist/app.js
+exec node dist/server.js

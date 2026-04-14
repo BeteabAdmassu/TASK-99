@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { logger } from '../config/logger';
+import { getAppConfig } from '../config/appConfig';
 import { recycleBinPurge } from './recycleBinPurge';
 import { notificationRetry } from './notificationRetry';
 import { processScheduledNotifications } from './notificationScheduled';
@@ -24,9 +25,29 @@ function scheduleJob(name: string, schedule: string, handler: () => Promise<void
 
 export function startScheduler(): void {
   scheduleJob('recycleBinPurge', '0 3 * * *', recycleBinPurge);
-  scheduleJob('notificationRetry', '*/2 * * * *', notificationRetry);
+
+  // notificationRetry: check DB feature flag before each execution
+  scheduleJob('notificationRetry', '*/2 * * * *', async () => {
+    const cfg = await getAppConfig();
+    if (!cfg.notificationRetryEnabled) {
+      logger.info({ job: 'notificationRetry' }, 'Job skipped: disabled via feature flag');
+      return;
+    }
+    await notificationRetry();
+  });
+
   scheduleJob('scheduledNotifications', '*/1 * * * *', processScheduledNotifications);
-  scheduleJob('anomalyDetection', '*/5 * * * *', anomalyDetectionJob);
+
+  // anomalyDetection: check DB feature flag before each execution
+  scheduleJob('anomalyDetection', '*/5 * * * *', async () => {
+    const cfg = await getAppConfig();
+    if (!cfg.anomalyDetectionEnabled) {
+      logger.info({ job: 'anomalyDetection' }, 'Job skipped: disabled via feature flag');
+      return;
+    }
+    await anomalyDetectionJob();
+  });
+
   scheduleJob('muteExpiry', '*/5 * * * *', muteExpiryJob);
   scheduleJob('tokenCleanup', '0 * * * *', tokenCleanupJob);
   scheduleJob('backup', '0 2 * * *', backupJob);

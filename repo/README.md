@@ -29,7 +29,9 @@ The API will be available at `http://localhost:3000`.
 
 - **Organization ID**: `00000000-0000-0000-0000-000000000001`
 - **Admin Username**: `admin`
-- **Admin Password**: `Admin12345678!`
+- **Admin Password**: Set in `prisma/seed.ts` — change immediately after first login
+
+> **Security note**: The seeded admin password is a development default. Rotate it before any production deployment using `PUT /api/auth/password` (requires Bearer token; body: `{ "currentPassword": "...", "newPassword": "..." }`).
 
 ### Running Tests
 
@@ -73,7 +75,8 @@ repo/
 │   ├── entrypoint.sh           # Docker entrypoint (wait, migrate, seed, start)
 │   └── backup.sh               # MySQL backup with 14-day retention
 ├── src/
-│   ├── app.ts                  # Express app assembly + server start
+│   ├── app.ts                  # Express app assembly (no side effects on import)
+│   ├── server.ts               # Bootstrap entry: DB connect, scheduler start, port bind
 │   ├── config/
 │   │   ├── database.ts         # Prisma client singleton
 │   │   ├── encryption.ts       # AES-256-GCM encrypt/decrypt
@@ -144,7 +147,7 @@ All environment variables have defaults in `docker-compose.yml`. No `.env` file 
 | NODE_ENV | production | Environment |
 | DATABASE_URL | mysql://... | Prisma connection string |
 | JWT_SECRET | (set in compose) | JWT signing secret (min 32 chars) |
-| JWT_EXPIRES_IN | 24h | Token expiration |
+| JWT_EXPIRES_IN | 86400 | Token expiration in **seconds** (86400 = 24 hours) |
 | BCRYPT_ROUNDS | 12 | Password hash rounds |
 | ENCRYPTION_KEY | (set in compose) | AES-256 key (64 hex chars) |
 | RATE_LIMIT_WRITE | 120 | Write requests per minute |
@@ -167,3 +170,8 @@ All environment variables have defaults in `docker-compose.yml`. No `.env` file 
 - **Feature flags**: Database-stored, audited configuration toggles
 - **Security**: bcrypt passwords, AES-256-GCM encryption, JWT auth, rate limiting
 - **Nightly backups**: Automated MySQL dumps with 14-day retention
+- **Point-in-time recovery**: Binlog-enabled restore — see [`docs/pitr-restore.md`](../docs/pitr-restore.md)
+
+## Database Backup and Recovery
+
+The database runs with binlog enabled (`--binlog-format=ROW`). Nightly logical backups are written to the `backups` Docker volume. For full restore and point-in-time recovery procedures, including the binlog replay sequence and verification checklist, see the dedicated runbook at **`docs/pitr-restore.md`**.

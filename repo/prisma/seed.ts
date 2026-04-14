@@ -5,10 +5,15 @@ const prisma = new PrismaClient();
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
-const ADMIN_PASSWORD = 'Admin12345678!';
 
 async function main() {
-  const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error('SEED_ADMIN_PASSWORD environment variable is required');
+    process.exit(1);
+  }
+
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
 
   await prisma.organization.upsert({
     where: { id: ORG_ID },
@@ -35,7 +40,7 @@ async function main() {
     },
   });
 
-  console.log(`Seed complete. Org ID: ${ORG_ID}, Admin: admin / ${ADMIN_PASSWORD}`);
+  console.log(`Seed complete. Org ID: ${ORG_ID}, admin user created. Change the default password before deploying to production.`);
 }
 
 main()

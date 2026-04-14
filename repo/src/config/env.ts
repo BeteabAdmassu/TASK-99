@@ -5,7 +5,10 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
-  JWT_EXPIRES_IN: z.coerce.number().default(86400),
+  // JWT_EXPIRES_IN is always numeric **seconds** (e.g. 86400 = 24 h, 3600 = 1 h).
+  // Do NOT supply a duration string such as "24h" — jsonwebtoken will interpret
+  // any number as seconds, so keep this consistent with that expectation.
+  JWT_EXPIRES_IN: z.coerce.number().positive('JWT_EXPIRES_IN must be a positive number of seconds').default(86400),
   BCRYPT_ROUNDS: z.coerce.number().default(12),
   ENCRYPTION_KEY: z.string().length(64, 'ENCRYPTION_KEY must be exactly 64 hex characters').regex(/^[0-9a-fA-F]+$/, 'ENCRYPTION_KEY must be hex'),
   RATE_LIMIT_WRITE: z.coerce.number().default(120),

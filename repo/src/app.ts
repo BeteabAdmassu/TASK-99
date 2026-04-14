@@ -4,13 +4,10 @@ import helmet from 'helmet';
 import compression from 'compression';
 import pinoHttp from 'pino-http';
 
-import { env } from './config/env';
 import { logger } from './config/logger';
-import { prisma } from './config/database';
 import { correlationIdMiddleware } from './middleware/correlationId';
 import { errorHandler } from './middleware/errorHandler';
 import { NotFoundError } from './utils/errors';
-import { startScheduler, stopScheduler } from './jobs/scheduler';
 
 // Route imports
 import authRoutes from './modules/auth/auth.routes';
@@ -98,38 +95,7 @@ app.use((_req, _res, next) => {
 // 30. Global error handler
 app.use(errorHandler);
 
-let server: ReturnType<typeof app.listen>;
-
-async function startServer(): Promise<void> {
-  try {
-    await prisma.$connect();
-    logger.info('Database connected');
-
-    startScheduler();
-
-    server = app.listen(env.PORT, () => {
-      logger.info(`Server started on port ${env.PORT}`);
-    });
-
-    // Graceful shutdown
-    const shutdown = async (signal: string) => {
-      logger.info(`${signal} received, shutting down gracefully`);
-      stopScheduler();
-      if (server) {
-        server.close();
-      }
-      await prisma.$disconnect();
-      process.exit(0);
-    };
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
-  } catch (err) {
-    logger.error({ err }, 'Failed to start server');
-    process.exit(1);
-  }
-}
-
-startServer();
-
+// app.ts only assembles the Express application.
+// Database connection, scheduler start, and port binding are handled by server.ts
+// so that importing this module in tests does not start any network listeners.
 export { app };

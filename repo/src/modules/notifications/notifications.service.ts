@@ -3,6 +3,44 @@ import { logger } from '../../config/logger';
 import { NotFoundError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 
+/**
+ * Single delivery attempt: mark a notification as delivered.
+ * Optionally records a `lastRetryAt` timestamp for retry-path deliveries.
+ * Returns true on success, false on any error.
+ */
+async function attemptDelivery(
+  notificationId: string,
+  now: Date,
+  opts: { lastRetryAt?: Date } = {},
+): Promise<boolean> {
+  try {
+    await prisma.notification.update({
+      where: { id: notificationId },
+      data: {
+        status: 'delivered',
+        deliveredAt: now,
+        ...(opts.lastRetryAt !== undefined ? { lastRetryAt: opts.lastRetryAt } : {}),
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Transition a notification to the failed state with retry metadata.
+ * `retryCount` counts failed delivery attempts (not successful retries).
+ */
+async function markFailed(notificationId: string, retryCount: number, now: Date): Promise<void> {
+  await prisma.notification.update({
+    where: { id: notificationId },
+    data: { status: 'failed', retryCount, lastRetryAt: now },
+  }).catch((err) => {
+    logger.error({ notificationId, err }, 'Failed to transition notification to failed state');
+  });
+}
+
 interface CreateNotificationData {
   orgId: string;
   userId: string;
@@ -66,18 +104,13 @@ export async function createNotification(data: CreateNotificationData) {
   // Only attempt immediate delivery for unscheduled or already-due notifications.
   // Future-scheduled notifications remain pending until the scheduler processes them.
   if (!isFutureScheduled) {
-    try {
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: {
-          status: 'delivered',
-          deliveredAt: now,
-        },
-      });
-
+    const delivered = await attemptDelivery(notification.id, now);
+    if (delivered) {
       logger.info({ notificationId: notification.id, userId: data.userId }, 'Notification delivered');
-    } catch (error) {
-      logger.warn({ notificationId: notification.id, error }, 'Notification delivery failed, left as pending');
+    } else {
+      // Delivery failed: transition to failed state so the retry pipeline picks it up.
+      await markFailed(notification.id, 0, now);
+      logger.warn({ notificationId: notification.id, userId: data.userId }, 'Notification delivery failed, queued for retry');
     }
   }
 
@@ -279,10 +312,33 @@ export async function markAllRead(orgId: string, userId: string) {
 }
 
 export async function processRetries() {
+  const now = new Date();
+  const windowCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // Step 1: Expire failed notifications outside the 24-hour retry window.
+  // Setting retryCount=3 is the explicit terminal state — these will never be
+  // picked up again because all retry queries filter on retryCount < 3.
+  const expired = await prisma.notification.updateMany({
+    where: {
+      status: 'failed',
+      retryCount: { lt: 3 },
+      createdAt: { lt: windowCutoff },
+    },
+    data: { retryCount: 3 },
+  });
+  if (expired.count > 0) {
+    logger.info(
+      { count: expired.count },
+      'Notification retry window expired: marked as terminal (retryCount=3)',
+    );
+  }
+
+  // Step 2: Find failed notifications eligible for retry (within 24h, < 3 failed attempts)
   const failedNotifications = await prisma.notification.findMany({
     where: {
       status: 'failed',
       retryCount: { lt: 3 },
+      createdAt: { gte: windowCutoff },
     },
   });
 
@@ -290,34 +346,41 @@ export async function processRetries() {
   let failCount = 0;
 
   for (const notification of failedNotifications) {
-    try {
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: {
-          status: 'delivered',
-          deliveredAt: new Date(),
-        },
-      });
+    // Exponential backoff: attempt 0 → 1 min, attempt 1 → 4 min, attempt 2 → 16 min
+    const backoffMs = Math.pow(4, notification.retryCount) * 60 * 1000;
+    const lastRetry = notification.lastRetryAt ?? notification.createdAt;
+    if (now.getTime() - lastRetry.getTime() < backoffMs) continue;
+
+    const delivered = await attemptDelivery(notification.id, now, { lastRetryAt: now });
+    if (delivered) {
+      // retryCount is NOT incremented on success — it tracks failed attempts only
       successCount++;
-    } catch (error) {
-      const newRetryCount = notification.retryCount + 1;
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: {
-          retryCount: newRetryCount,
-          lastRetryAt: new Date(),
-        },
-      });
-      failCount++;
-      logger.warn(
-        { notificationId: notification.id, retryCount: newRetryCount },
-        'Notification retry failed',
+      logger.info(
+        { notificationId: notification.id, attempt: notification.retryCount + 1 },
+        'Notification retry delivered',
       );
+    } else {
+      const newRetryCount = notification.retryCount + 1;
+      await markFailed(notification.id, newRetryCount, now);
+      if (newRetryCount >= 3) {
+        logger.warn(
+          { notificationId: notification.id },
+          'Notification retry exhausted after max attempts, entering terminal failed state',
+        );
+      } else {
+        logger.warn(
+          { notificationId: notification.id, retryCount: newRetryCount },
+          'Notification retry failed, will retry later',
+        );
+      }
+      failCount++;
     }
   }
 
-  logger.info({ successCount, failCount, total: failedNotifications.length }, 'Notification retries processed');
-
+  logger.info(
+    { successCount, failCount, total: failedNotifications.length },
+    'Notification retries processed',
+  );
   return { successCount, failCount, total: failedNotifications.length };
 }
 
@@ -332,26 +395,29 @@ export async function processScheduled() {
   });
 
   let processedCount = 0;
+  let failedCount = 0;
 
   for (const notification of scheduledNotifications) {
-    try {
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: {
-          status: 'delivered',
-          deliveredAt: now,
-        },
-      });
+    // Run through the shared delivery pipeline so failures enter the retry queue
+    const delivered = await attemptDelivery(notification.id, now);
+    if (delivered) {
       processedCount++;
-    } catch (error) {
+    } else {
+      await markFailed(notification.id, 0, now);
+      failedCount++;
       logger.warn(
-        { notificationId: notification.id, error },
-        'Failed to process scheduled notification',
+        { notificationId: notification.id },
+        'Scheduled notification delivery failed, queued for retry',
       );
     }
   }
 
-  logger.info({ processedCount, total: scheduledNotifications.length }, 'Scheduled notifications processed');
+  if (processedCount > 0 || failedCount > 0) {
+    logger.info(
+      { processedCount, failedCount, total: scheduledNotifications.length },
+      'Scheduled notifications processed',
+    );
+  }
 
-  return { processedCount, total: scheduledNotifications.length };
+  return { processedCount, failedCount, total: scheduledNotifications.length };
 }

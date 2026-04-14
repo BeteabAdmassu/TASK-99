@@ -4,6 +4,7 @@ import { NotFoundError, ForbiddenError, BusinessRuleError } from '../../utils/er
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
 import { createForNewReply } from '../notifications/notifications.service';
+import { getAppConfig } from '../../config/appConfig';
 
 interface CreateReplyData {
   body: string;
@@ -44,7 +45,8 @@ export async function createReply(
       throw new NotFoundError('Parent reply not found');
     }
 
-    if (parentReply.depth >= 3) {
+    const cfg = await getAppConfig();
+    if (parentReply.depth >= cfg.maxReplyDepth) {
       throw new BusinessRuleError(
         400,
         'MAX_NESTING_DEPTH',

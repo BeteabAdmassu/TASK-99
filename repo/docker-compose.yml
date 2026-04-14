@@ -1,20 +1,27 @@
 version: '3.8'
 
+# IMPORTANT: The values below are development defaults only.
+# Before deploying to production you MUST supply externally managed secrets for
+# JWT_SECRET, ENCRYPTION_KEY, MYSQL_ROOT_PASSWORD, MYSQL_PASSWORD, and DB_PASSWORD
+# via environment variables or a secrets manager — never commit real secrets here.
+
 services:
   mysql:
     image: mysql:8.0
     command: --default-authentication-plugin=mysql_native_password --log-bin=mysql-bin --server-id=1 --binlog-format=ROW
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
+      # DEV default — replace with a strong random value in production
+      MYSQL_ROOT_PASSWORD: dev-root-change-in-production
       MYSQL_DATABASE: civicforum
       MYSQL_USER: civicforum
-      MYSQL_PASSWORD: civicforum_pass
+      # DEV default — replace with a strong random value in production
+      MYSQL_PASSWORD: dev-civicforum-change-in-production
     ports:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pdev-root-change-in-production"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -29,11 +36,14 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
-      DATABASE_URL: mysql://civicforum:civicforum_pass@mysql:3306/civicforum
-      JWT_SECRET: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+      DATABASE_URL: mysql://civicforum:dev-civicforum-change-in-production@mysql:3306/civicforum
+      # DEV default — must be >= 32 chars; replace with a secret random value in production
+      JWT_SECRET: dev-jwt-secret-replace-before-production-use-0000000000000000
+      # JWT expiry in seconds (86400 = 24 hours)
       JWT_EXPIRES_IN: 86400
       BCRYPT_ROUNDS: 12
-      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      # DEV default — must be exactly 64 hex chars; replace with a secret random value in production
+      ENCRYPTION_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
       RATE_LIMIT_WRITE: 120
       RATE_LIMIT_READ: 600
       RATE_LIMIT_WINDOW_MS: 60000
@@ -43,8 +53,11 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: civicforum
-      DB_PASSWORD: civicforum_pass
+      # DEV default — match MYSQL_PASSWORD above; replace in production
+      DB_PASSWORD: dev-civicforum-change-in-production
       DB_NAME: civicforum
+      # DEV default — used only during database seeding; replace with a strong value in production
+      SEED_ADMIN_PASSWORD: Admin12345678!
     depends_on:
       mysql:
         condition: service_healthy
