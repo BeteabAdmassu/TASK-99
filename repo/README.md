@@ -29,9 +29,9 @@ The API will be available at `http://localhost:3000`.
 
 - **Organization ID**: `00000000-0000-0000-0000-000000000001`
 - **Admin Username**: `admin`
-- **Admin Password**: Set in `prisma/seed.ts` — change immediately after first login
+- **Admin Password**: Sourced from the `SEED_ADMIN_PASSWORD` environment variable at seed time. The dev default (`Admin12345678!`) is set in `docker-compose.yml` and must be replaced before any production deployment.
 
-> **Security note**: The seeded admin password is a development default. Rotate it before any production deployment using `PUT /api/auth/password` (requires Bearer token; body: `{ "currentPassword": "...", "newPassword": "..." }`).
+> **Security note**: `SEED_ADMIN_PASSWORD` in `docker-compose.yml` is a development placeholder only. In production, supply it via an externally managed secret (e.g. Docker Swarm secret, Kubernetes secret, or a secrets manager) and never commit it to source control. Rotate the seeded password immediately after first login using `PUT /api/auth/password` (requires Bearer token; body: `{ "currentPassword": "...", "newPassword": "..." }`).
 
 ### Running Tests
 

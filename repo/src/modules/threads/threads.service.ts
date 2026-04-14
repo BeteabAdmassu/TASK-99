@@ -5,6 +5,11 @@ import { parsePagination, buildPaginatedResponse } from '../../utils/pagination'
 import { createAuditLog } from '../audit/audit.service';
 import { getAppConfig } from '../../config/appConfig';
 
+// Derive the interactive-transaction client type from the prisma singleton so
+// we avoid an extra bare '@prisma/client' import that may not resolve until
+// after 'prisma generate' has run.
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 interface CreateThreadData {
   subsectionId: string;
   title: string;
@@ -62,7 +67,7 @@ export async function createThread(
   }
 
   // Create thread and its tag associations atomically.
-  const thread = await prisma.$transaction(async (tx) => {
+  const thread = await prisma.$transaction(async (tx: TxClient) => {
     const newThread = await tx.thread.create({
       data: {
         organizationId: orgId,
@@ -263,7 +268,7 @@ export async function updateThread(
     if (data.title !== undefined) fieldData.title = data.title;
     if (data.body !== undefined) fieldData.body = data.body;
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: TxClient) => {
       if (Object.keys(fieldData).length > 0) {
         await tx.thread.update({ where: { id: threadId }, data: fieldData });
       }
