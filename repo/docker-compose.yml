@@ -1,13 +1,62 @@
-# PLACEHOLDER — MUST replace this entire file.
-# This file ALWAYS lives at repo/ root.
-# Configure services for the actual tech stack from the prompt.
-#
-# CI runner does: docker compose up --build -d
-# Then runs: ./run_tests.sh on the host
-#
-# Rules:
-#   - App must work after 'up' with ZERO manual steps
-#   - All env vars must have defaults (CI has no .env)
-#   - DB must auto-initialize
-#   - Health checks must be defined
-#   - build.context must point to where each Dockerfile lives
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password --log-bin=mysql-bin --server-id=1 --binlog-format=ROW
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: civicforum
+      MYSQL_USER: civicforum
+      MYSQL_PASSWORD: civicforum_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: mysql://civicforum:civicforum_pass@mysql:3306/civicforum
+      JWT_SECRET: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+      JWT_EXPIRES_IN: 24h
+      BCRYPT_ROUNDS: 12
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      RATE_LIMIT_WRITE: 120
+      RATE_LIMIT_READ: 600
+      RATE_LIMIT_WINDOW_MS: 60000
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: 14
+      LOG_LEVEL: info
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: civicforum
+      DB_PASSWORD: civicforum_pass
+      DB_NAME: civicforum
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - backups:/backups
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+
+volumes:
+  mysql_data:
+  backups:

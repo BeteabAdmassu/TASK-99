@@ -1,0 +1,512 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  moderator
+  analyst
+  user
+}
+
+enum BookingStatus {
+  confirmed
+  cancelled
+}
+
+enum NotificationStatus {
+  pending
+  delivered
+  read
+  failed
+}
+
+enum ReportStatus {
+  pending
+  reviewed
+  dismissed
+}
+
+enum AnomalyStatus {
+  open
+  acknowledged
+  resolved
+  dismissed
+}
+
+enum AnomalySeverity {
+  low
+  medium
+  high
+  critical
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  name      String   @db.VarChar(255)
+  slug      String   @unique @db.VarChar(255)
+  settings  Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  users                     User[]
+  forumSections             ForumSection[]
+  forumSubsections          ForumSubsection[]
+  threads                   Thread[]
+  replies                   Reply[]
+  tags                      Tag[]
+  announcements             Announcement[]
+  carouselItems             CarouselItem[]
+  venues                    Venue[]
+  venueBookings             VenueBooking[]
+  notifications             Notification[]
+  notificationSubscriptions NotificationSubscription[]
+  auditLogs                 AuditLog[]
+  eventLogs                 EventLog[]
+  anomalyFlags              AnomalyFlag[]
+  featureFlags              FeatureFlag[]
+  threadReports             ThreadReport[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  organizationId String    @map("organization_id") @db.VarChar(36)
+  username       String    @db.VarChar(100)
+  passwordHash   String    @map("password_hash") @db.VarChar(255)
+  emailEncrypted Bytes?    @map("email_encrypted") @db.VarBinary(512)
+  role           UserRole  @default(user)
+  isBanned       Boolean   @default(false) @map("is_banned")
+  bannedAt       DateTime? @map("banned_at") @db.DateTime(3)
+  bannedBy       String?   @map("banned_by") @db.VarChar(36)
+  banReason      String?   @map("ban_reason") @db.Text
+  isMuted        Boolean   @default(false) @map("is_muted")
+  mutedUntil     DateTime? @map("muted_until") @db.DateTime(3)
+  mutedBy        String?   @map("muted_by") @db.VarChar(36)
+  muteReason     String?   @map("mute_reason") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  loginAttempts             LoginAttempt[]
+  accountLockouts           AccountLockout[]
+  threads                   Thread[]              @relation("ThreadAuthor")
+  deletedThreads            Thread[]              @relation("ThreadDeleter")
+  replies                   Reply[]               @relation("ReplyAuthor")
+  deletedReplies            Reply[]               @relation("ReplyDeleter")
+  announcements             Announcement[]
+  carouselItems             CarouselItem[]
+  venueBookings             VenueBooking[]
+  notifications             Notification[]
+  notificationSubscriptions NotificationSubscription[]
+  auditLogs                 AuditLog[]
+  eventLogs                 EventLog[]
+  anomalyFlagsAsUser        AnomalyFlag[]         @relation("FlaggedUser")
+  anomalyFlagsAsResolver    AnomalyFlag[]         @relation("AnomalyResolver")
+  featureFlagsUpdated       FeatureFlag[]
+  threadReports             ThreadReport[]
+
+  @@unique([organizationId, username])
+  @@index([organizationId])
+  @@map("users")
+}
+
+model LoginAttempt {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  userId      String   @map("user_id") @db.VarChar(36)
+  attemptedAt DateTime @default(now()) @map("attempted_at") @db.DateTime(3)
+  success     Boolean
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, attemptedAt])
+  @@map("login_attempts")
+}
+
+model AccountLockout {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  userId    String   @map("user_id") @db.VarChar(36)
+  lockedAt  DateTime @default(now()) @map("locked_at") @db.DateTime(3)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account_lockouts")
+}
+
+model ForumSection {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  name           String   @db.VarChar(255)
+  description    String?  @db.Text
+  displayOrder   Int      @default(0) @map("display_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subsections  ForumSubsection[]
+
+  @@index([organizationId])
+  @@index([organizationId, displayOrder])
+  @@map("forum_sections")
+}
+
+model ForumSubsection {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  sectionId      String   @map("section_id") @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  name           String   @db.VarChar(255)
+  description    String?  @db.Text
+  displayOrder   Int      @default(0) @map("display_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  section      ForumSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  threads      Thread[]
+
+  @@index([sectionId])
+  @@index([organizationId])
+  @@map("forum_subsections")
+}
+
+model Thread {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  organizationId String    @map("organization_id") @db.VarChar(36)
+  subsectionId   String    @map("subsection_id") @db.VarChar(36)
+  authorId       String    @map("author_id") @db.VarChar(36)
+  title          String    @db.VarChar(300)
+  body           String    @db.Text
+  isPinned       Boolean   @default(false) @map("is_pinned")
+  isFeatured     Boolean   @default(false) @map("is_featured")
+  isLocked       Boolean   @default(false) @map("is_locked")
+  isArchived     Boolean   @default(false) @map("is_archived")
+  viewCount      Int       @default(0) @map("view_count")
+  replyCount     Int       @default(0) @map("reply_count")
+  lastActivityAt DateTime  @default(now()) @map("last_activity_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+  deletedBy      String?   @map("deleted_by") @db.VarChar(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subsection   ForumSubsection @relation(fields: [subsectionId], references: [id], onDelete: Cascade)
+  author       User            @relation("ThreadAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  deleter      User?           @relation("ThreadDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
+  replies      Reply[]
+  threadTags   ThreadTag[]
+  reports      ThreadReport[]
+  anomalyFlags AnomalyFlag[]
+
+  @@index([organizationId])
+  @@index([subsectionId])
+  @@index([authorId])
+  @@index([deletedAt])
+  @@index([subsectionId, isPinned])
+  @@index([subsectionId, lastActivityAt(sort: Desc)])
+  @@map("threads")
+}
+
+model Reply {
+  id            String    @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  threadId      String    @map("thread_id") @db.VarChar(36)
+  authorId      String    @map("author_id") @db.VarChar(36)
+  parentReplyId String?   @map("parent_reply_id") @db.VarChar(36)
+  depth         Int       @default(1) @db.TinyInt
+  body          String    @db.Text
+  deletedAt     DateTime? @map("deleted_at") @db.DateTime(3)
+  deletedBy     String?   @map("deleted_by") @db.VarChar(36)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  thread       Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author       User         @relation("ReplyAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  deleter      User?        @relation("ReplyDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
+  parentReply  Reply?       @relation("ReplyChildren", fields: [parentReplyId], references: [id], onDelete: Cascade)
+  children     Reply[]      @relation("ReplyChildren")
+
+  @@index([threadId])
+  @@index([organizationId])
+  @@index([parentReplyId])
+  @@index([authorId])
+  @@index([deletedAt])
+  @@map("replies")
+}
+
+model Tag {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  category       String?  @db.VarChar(100)
+  name           String   @db.VarChar(100)
+  slug           String   @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  threadTags   ThreadTag[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([organizationId, category])
+  @@map("tags")
+}
+
+model ThreadTag {
+  threadId String @map("thread_id") @db.VarChar(36)
+  tagId    String @map("tag_id") @db.VarChar(36)
+
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([threadId, tagId])
+  @@index([tagId])
+  @@map("thread_tags")
+}
+
+model Announcement {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  title          String   @db.VarChar(300)
+  body           String   @db.Text
+  displayOrder   Int      @default(0) @map("display_order")
+  startDate      DateTime @map("start_date") @db.DateTime(3)
+  endDate        DateTime @map("end_date") @db.DateTime(3)
+  isPublished    Boolean  @default(false) @map("is_published")
+  createdBy      String   @map("created_by") @db.VarChar(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, startDate, endDate])
+  @@map("announcements")
+}
+
+model CarouselItem {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  title          String   @db.VarChar(300)
+  imageUrl       String?  @map("image_url") @db.VarChar(1000)
+  linkUrl        String?  @map("link_url") @db.VarChar(1000)
+  displayOrder   Int      @default(0) @map("display_order")
+  startDate      DateTime @map("start_date") @db.DateTime(3)
+  endDate        DateTime @map("end_date") @db.DateTime(3)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdBy      String   @map("created_by") @db.VarChar(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, startDate, endDate])
+  @@map("carousel_items")
+}
+
+model Venue {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  name           String   @db.VarChar(255)
+  description    String?  @db.Text
+  capacity       Int?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bookings     VenueBooking[]
+
+  @@index([organizationId])
+  @@map("venues")
+}
+
+model VenueBooking {
+  id             String        @id @default(uuid()) @db.VarChar(36)
+  organizationId String        @map("organization_id") @db.VarChar(36)
+  venueId        String        @map("venue_id") @db.VarChar(36)
+  bookedBy       String        @map("booked_by") @db.VarChar(36)
+  title          String        @db.VarChar(255)
+  startTime      DateTime      @map("start_time") @db.DateTime(3)
+  endTime        DateTime      @map("end_time") @db.DateTime(3)
+  status         BookingStatus @default(confirmed)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  venue        Venue        @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  booker       User         @relation(fields: [bookedBy], references: [id], onDelete: Cascade)
+
+  @@index([venueId, startTime, endTime])
+  @@index([organizationId])
+  @@index([bookedBy])
+  @@map("venue_bookings")
+}
+
+model Notification {
+  id             String             @id @default(uuid()) @db.VarChar(36)
+  organizationId String             @map("organization_id") @db.VarChar(36)
+  userId         String             @map("user_id") @db.VarChar(36)
+  type           String             @db.VarChar(50)
+  title          String             @db.VarChar(300)
+  body           String             @db.Text
+  referenceType  String?            @map("reference_type") @db.VarChar(50)
+  referenceId    String?            @map("reference_id") @db.VarChar(36)
+  status         NotificationStatus @default(pending)
+  scheduledAt    DateTime?          @map("scheduled_at") @db.DateTime(3)
+  deliveredAt    DateTime?          @map("delivered_at") @db.DateTime(3)
+  readAt         DateTime?          @map("read_at") @db.DateTime(3)
+  retryCount     Int                @default(0) @map("retry_count") @db.TinyInt
+  lastRetryAt    DateTime?          @map("last_retry_at") @db.DateTime(3)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([organizationId])
+  @@index([status, scheduledAt])
+  @@index([status, retryCount, lastRetryAt])
+  @@map("notifications")
+}
+
+model NotificationSubscription {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  userId         String   @map("user_id") @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  category       String   @db.VarChar(100)
+  isSubscribed   Boolean  @default(true) @map("is_subscribed")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId, category])
+  @@index([organizationId])
+  @@map("notification_subscriptions")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  actorId        String?  @map("actor_id") @db.VarChar(36)
+  action         String   @db.VarChar(100)
+  resourceType   String?  @map("resource_type") @db.VarChar(50)
+  resourceId     String?  @map("resource_id") @db.VarChar(36)
+  details        Json?
+  ipAddress      String?  @map("ip_address") @db.VarChar(45)
+  correlationId  String?  @map("correlation_id") @db.VarChar(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([actorId])
+  @@index([action])
+  @@index([organizationId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+model EventLog {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  userId         String?  @map("user_id") @db.VarChar(36)
+  eventType      String   @map("event_type") @db.VarChar(50)
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, eventType])
+  @@index([organizationId, createdAt])
+  @@index([userId])
+  @@map("event_logs")
+}
+
+model AnomalyFlag {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  organizationId  String          @map("organization_id") @db.VarChar(36)
+  flaggedUserId   String?         @map("flagged_user_id") @db.VarChar(36)
+  flaggedThreadId String?         @map("flagged_thread_id") @db.VarChar(36)
+  ruleName        String          @map("rule_name") @db.VarChar(100)
+  description     String          @db.Text
+  severity        AnomalySeverity @default(medium)
+  status          AnomalyStatus   @default(open)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  resolvedAt      DateTime?       @map("resolved_at") @db.DateTime(3)
+  resolvedBy      String?         @map("resolved_by") @db.VarChar(36)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  flaggedUser   User?        @relation("FlaggedUser", fields: [flaggedUserId], references: [id], onDelete: SetNull)
+  flaggedThread Thread?      @relation(fields: [flaggedThreadId], references: [id], onDelete: SetNull)
+  resolver      User?        @relation("AnomalyResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([flaggedUserId])
+  @@map("anomaly_flags")
+}
+
+model FeatureFlag {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  organizationId String   @map("organization_id") @db.VarChar(36)
+  flagKey        String   @map("flag_key") @db.VarChar(100)
+  value          Json
+  description    String?  @db.VarChar(500)
+  updatedBy      String?  @map("updated_by") @db.VarChar(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updater      User?        @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, flagKey])
+  @@map("feature_flags")
+}
+
+model ThreadReport {
+  id             String       @id @default(uuid()) @db.VarChar(36)
+  organizationId String       @map("organization_id") @db.VarChar(36)
+  threadId       String       @map("thread_id") @db.VarChar(36)
+  reportedBy     String       @map("reported_by") @db.VarChar(36)
+  reason         String       @db.Text
+  status         ReportStatus @default(pending)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  thread       Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  reporter     User         @relation(fields: [reportedBy], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([organizationId])
+  @@index([threadId, createdAt])
+  @@map("thread_reports")
+}
+
+model TokenBlacklist {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  tokenJti  String   @unique @map("token_jti") @db.VarChar(36)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([tokenJti])
+  @@index([expiresAt])
+  @@map("token_blacklist")
+}

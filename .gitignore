@@ -9,3 +9,5 @@ build/
 coverage/
 .venv/
 venv/
+plan.md
+settings.local.json
