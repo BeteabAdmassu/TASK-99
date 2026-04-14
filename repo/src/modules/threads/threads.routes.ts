@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { validate } from '../../middleware/validate';
 import { authMiddleware } from '../../middleware/auth';
-import { requireRole } from '../../middleware/rbac';
+import { requireRole, denyRole } from '../../middleware/rbac';
 import { orgScopeMiddleware } from '../../middleware/orgScope';
 import { checkBanMuteMiddleware } from '../../middleware/checkBanMute';
 import { writeRateLimiter, readRateLimiter } from '../../middleware/rateLimiter';
@@ -12,7 +12,7 @@ const router = Router({ mergeParams: true });
 
 router.post(
   '/',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   validate({ body: createThreadSchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -47,7 +47,7 @@ router.get(
 
 router.put(
   '/:threadId',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   validate({ body: updateThreadSchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -61,7 +61,7 @@ router.put(
 
 router.delete(
   '/:threadId',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await threadsService.deleteThread(req.params.orgId, req.params.threadId, req.user!.id, req.user!.role);

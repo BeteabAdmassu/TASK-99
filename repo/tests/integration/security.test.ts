@@ -8,6 +8,10 @@
  *  5. Notification retry lifecycle: delivery, backoff, 24h expiry, terminal state
  *  6. Anomaly detection threshold rules (excessive deletions)
  *  7. Object-level authorisation: non-owner cannot update or delete another user's content
+ *  8. Analyst role is read-only: 403 on all content write paths
+ *  9. Non-platform-admin cannot create organizations (403)
+ * 10. Non-admin cannot create feature flags (403)
+ * 11. Real app rate limiter middleware is wired (integration)
  */
 
 import request from 'supertest';
@@ -600,5 +604,314 @@ describe('Object-level authorisation: non-owner cannot modify another user\'s co
       .set('Authorization', `Bearer ${userAToken}`)
       .send({ body: 'Updated by owner' });
     expect(r.status).toBe(200);
+  });
+});
+
+// ─── 8. Analyst role write denial ────────────────────────────────────────────
+
+describe('Analyst role: 403 on all content write paths', () => {
+  let adminToken: string;
+  let analystToken: string;
+  let analystId: string;
+  let subsectionId: string;
+  let threadId: string;
+  let replyId: string;
+  let venueId: string;
+  let bookingId: string;
+
+  beforeAll(async () => {
+    adminToken = await loginAsAdmin();
+    const pwHash = await bcrypt.hash('AnalystPass1!', 4);
+
+    const analyst = await prisma.user.create({
+      data: { organizationId: ORG_ID, username: 'analyst_' + Date.now(), passwordHash: pwHash, role: 'analyst' },
+    });
+    analystId = analyst.id;
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: analyst.username, password: 'AnalystPass1!', organizationId: ORG_ID });
+    analystToken = loginRes.body.token;
+
+    // Create section/subsection/thread/reply/venue as admin for use in tests
+    const secRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/sections`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Analyst Test Section ' + Date.now(), displayOrder: 300 });
+    const sectionId = secRes.body.section.id;
+
+    const subRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/sections/${sectionId}/subsections`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Analyst Subsection', displayOrder: 0 });
+    subsectionId = subRes.body.subsection.id;
+
+    const tRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/threads`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ subsectionId, title: 'Analyst Target Thread', body: 'Content' });
+    threadId = tRes.body.thread.id;
+
+    const rRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/threads/${threadId}/replies`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ body: 'Analyst target reply' });
+    replyId = rRes.body.reply.id;
+
+    const vRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/venues`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Analyst Venue ' + Date.now(), description: 'Test venue', capacity: 10 });
+    venueId = vRes.body.venue.id;
+
+    // Admin creates a booking so analyst update/cancel denial tests have a real target.
+    const bRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/venues/${venueId}/bookings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ title: 'Admin Booking', startTime: '2031-06-01T09:00:00Z', endTime: '2031-06-01T10:00:00Z' });
+    bookingId = bRes.body.booking.id;
+  });
+
+  afterAll(async () => {
+    await prisma.reply.deleteMany({ where: { threadId } });
+    await prisma.thread.deleteMany({ where: { id: threadId } });
+    if (bookingId) {
+      await prisma.venueBooking.deleteMany({ where: { id: bookingId } });
+    }
+    await prisma.venue.deleteMany({ where: { id: venueId } });
+    await prisma.loginAttempt.deleteMany({ where: { userId: analystId } });
+    await prisma.user.deleteMany({ where: { id: analystId } });
+  });
+
+  // Thread write paths
+  it('analyst cannot create a thread (403)', async () => {
+    const r = await request(app)
+      .post(`/api/organizations/${ORG_ID}/threads`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ subsectionId, title: 'Analyst thread', body: 'Body' });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot update a thread (403)', async () => {
+    const r = await request(app)
+      .put(`/api/organizations/${ORG_ID}/threads/${threadId}`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ title: 'Updated', body: 'Updated' });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot delete a thread (403)', async () => {
+    const r = await request(app)
+      .delete(`/api/organizations/${ORG_ID}/threads/${threadId}`)
+      .set('Authorization', `Bearer ${analystToken}`);
+    expect(r.status).toBe(403);
+  });
+
+  // Reply write paths
+  it('analyst cannot create a reply (403)', async () => {
+    const r = await request(app)
+      .post(`/api/organizations/${ORG_ID}/threads/${threadId}/replies`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ body: 'Analyst reply' });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot update a reply (403)', async () => {
+    const r = await request(app)
+      .put(`/api/organizations/${ORG_ID}/replies/${replyId}`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ body: 'Updated' });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot delete a reply (403)', async () => {
+    const r = await request(app)
+      .delete(`/api/organizations/${ORG_ID}/replies/${replyId}`)
+      .set('Authorization', `Bearer ${analystToken}`);
+    expect(r.status).toBe(403);
+  });
+
+  // Booking write paths
+  it('analyst cannot create a booking (403)', async () => {
+    const r = await request(app)
+      .post(`/api/organizations/${ORG_ID}/venues/${venueId}/bookings`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ title: 'Analyst booking', startTime: '2030-01-01T09:00:00Z', endTime: '2030-01-01T10:00:00Z' });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot update a booking (403)', async () => {
+    const r = await request(app)
+      .put(`/api/organizations/${ORG_ID}/bookings/${bookingId}`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ title: 'Hijacked title' });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot cancel a booking (403)', async () => {
+    const r = await request(app)
+      .delete(`/api/organizations/${ORG_ID}/bookings/${bookingId}`)
+      .set('Authorization', `Bearer ${analystToken}`);
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst read access is still allowed (200 on GET threads)', async () => {
+    const r = await request(app)
+      .get(`/api/organizations/${ORG_ID}/threads`)
+      .set('Authorization', `Bearer ${analystToken}`);
+    expect(r.status).toBe(200);
+  });
+});
+
+// ─── 9. Non-platform-admin cannot create organizations ───────────────────────
+
+describe('Organization creation: requires platform admin (403 for others)', () => {
+  let regularUserToken: string;
+  let orgAdminToken: string;
+  let regularUserId: string;
+  let orgAdminId: string;
+  let secondaryOrgId: string;
+
+  beforeAll(async () => {
+    const pwHash = await bcrypt.hash('TestPass1!', 4);
+
+    // Regular user lives in the platform org — role alone is insufficient.
+    const regularUser = await prisma.user.create({
+      data: { organizationId: ORG_ID, username: 'reg_user_' + Date.now(), passwordHash: pwHash, role: 'user' },
+    });
+    regularUserId = regularUser.id;
+    const loginRegular = await request(app)
+      .post('/api/auth/login')
+      .send({ username: regularUser.username, password: 'TestPass1!', organizationId: ORG_ID });
+    regularUserToken = loginRegular.body.token;
+
+    // Create a secondary (non-platform) org directly via Prisma.
+    // Its auto-generated UUID is guaranteed != PLATFORM_ORG_ID.
+    const secondaryOrg = await prisma.organization.create({
+      data: { name: 'Secondary Org ' + Date.now(), slug: 'secondary-org-' + Date.now() },
+    });
+    secondaryOrgId = secondaryOrg.id;
+
+    // Admin user is in the SECONDARY org — role=admin but organizationId != PLATFORM_ORG_ID.
+    // requirePlatformAdmin checks both role AND organizationId, so this must return 403.
+    const orgAdmin = await prisma.user.create({
+      data: { organizationId: secondaryOrgId, username: 'org_admin_' + Date.now(), passwordHash: pwHash, role: 'admin' },
+    });
+    orgAdminId = orgAdmin.id;
+    const loginOrgAdmin = await request(app)
+      .post('/api/auth/login')
+      .send({ username: orgAdmin.username, password: 'TestPass1!', organizationId: secondaryOrgId });
+    orgAdminToken = loginOrgAdmin.body.token;
+  });
+
+  afterAll(async () => {
+    await prisma.loginAttempt.deleteMany({ where: { userId: { in: [regularUserId, orgAdminId] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [regularUserId, orgAdminId] } } });
+    if (secondaryOrgId) {
+      await prisma.organization.deleteMany({ where: { id: secondaryOrgId } });
+    }
+  });
+
+  it('regular user (role=user, platform org) cannot create an organization (403)', async () => {
+    const r = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${regularUserToken}`)
+      .send({ name: 'Rogue Org', slug: 'rogue-org' });
+    expect(r.status).toBe(403);
+  });
+
+  it('admin in non-platform org (role=admin, organizationId != PLATFORM_ORG_ID) cannot create an organization (403)', async () => {
+    const r = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${orgAdminToken}`)
+      .send({ name: 'Rogue Org 2', slug: 'rogue-org-2' });
+    expect(r.status).toBe(403);
+  });
+});
+
+// ─── 10. Non-admin cannot create feature flags ───────────────────────────────
+
+describe('Feature flags: admin-only create endpoint (403 for non-admin)', () => {
+  let moderatorToken: string;
+  let analystToken: string;
+  let moderatorId: string;
+  let analystId: string;
+
+  beforeAll(async () => {
+    const pwHash = await bcrypt.hash('TestPass1!', 4);
+
+    const mod = await prisma.user.create({
+      data: { organizationId: ORG_ID, username: 'mod_ff_' + Date.now(), passwordHash: pwHash, role: 'moderator' },
+    });
+    moderatorId = mod.id;
+    const loginMod = await request(app)
+      .post('/api/auth/login')
+      .send({ username: mod.username, password: 'TestPass1!', organizationId: ORG_ID });
+    moderatorToken = loginMod.body.token;
+
+    const analyst = await prisma.user.create({
+      data: { organizationId: ORG_ID, username: 'analyst_ff_' + Date.now(), passwordHash: pwHash, role: 'analyst' },
+    });
+    analystId = analyst.id;
+    const loginAnalyst = await request(app)
+      .post('/api/auth/login')
+      .send({ username: analyst.username, password: 'TestPass1!', organizationId: ORG_ID });
+    analystToken = loginAnalyst.body.token;
+  });
+
+  afterAll(async () => {
+    await prisma.loginAttempt.deleteMany({ where: { userId: { in: [moderatorId, analystId] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [moderatorId, analystId] } } });
+  });
+
+  it('moderator cannot create a feature flag (403)', async () => {
+    const r = await request(app)
+      .post(`/api/organizations/${ORG_ID}/feature-flags`)
+      .set('Authorization', `Bearer ${moderatorToken}`)
+      .send({ name: 'test_flag', description: 'Should fail', enabled: false });
+    expect(r.status).toBe(403);
+  });
+
+  it('analyst cannot create a feature flag (403)', async () => {
+    const r = await request(app)
+      .post(`/api/organizations/${ORG_ID}/feature-flags`)
+      .set('Authorization', `Bearer ${analystToken}`)
+      .send({ name: 'test_flag2', description: 'Should fail', enabled: false });
+    expect(r.status).toBe(403);
+  });
+});
+
+// ─── 11. Real app rate limiter middleware wiring (integration) ────────────────
+
+describe('Rate limiting: real app middleware is wired (integration)', () => {
+  let adminToken: string;
+
+  beforeAll(async () => {
+    adminToken = await loginAsAdmin();
+  });
+
+  it('read endpoint response includes RateLimit headers (readRateLimiter is applied)', async () => {
+    const r = await request(app)
+      .get(`/api/organizations/${ORG_ID}/threads`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    // express-rate-limit with standardHeaders:true always emits these headers.
+    // Their absence would mean the middleware was not reached on this route.
+    expect(r.headers['ratelimit-limit']).toBeDefined();
+    expect(r.headers['ratelimit-remaining']).toBeDefined();
+    expect(Number(r.headers['ratelimit-remaining'])).toBeLessThanOrEqual(
+      Number(r.headers['ratelimit-limit']),
+    );
+  });
+
+  it('write endpoint response includes RateLimit headers (writeRateLimiter is applied)', async () => {
+    // POST with intentionally empty body so validation returns 400, but the rate
+    // limiter middleware still runs and sets its headers before the validator fires.
+    const r = await request(app)
+      .post(`/api/organizations/${ORG_ID}/threads`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+
+    expect(r.headers['ratelimit-limit']).toBeDefined();
+    expect(r.headers['ratelimit-remaining']).toBeDefined();
   });
 });

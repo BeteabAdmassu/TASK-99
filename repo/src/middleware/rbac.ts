@@ -19,6 +19,20 @@ export function requireRole(...roles: string[]) {
   };
 }
 
+/**
+ * Denies access to any user whose role is in the provided list.
+ * Use to enforce read-only boundaries for roles such as `analyst`.
+ */
+export function denyRole(...roles: string[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (req.user && roles.includes(req.user.role)) {
+      next(new ForbiddenError('Insufficient permissions'));
+      return;
+    }
+    next();
+  };
+}
+
 export function requirePlatformAdmin(req: Request, _res: Response, next: NextFunction): void {
   if (
     !req.user ||

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { validate } from '../../middleware/validate';
 import { authMiddleware } from '../../middleware/auth';
-import { requireRole } from '../../middleware/rbac';
+import { requireRole, denyRole } from '../../middleware/rbac';
 import { orgScopeMiddleware } from '../../middleware/orgScope';
 import { checkBanMuteMiddleware } from '../../middleware/checkBanMute';
 import { writeRateLimiter, readRateLimiter } from '../../middleware/rateLimiter';
@@ -71,7 +71,7 @@ router.delete(
 // Bookings
 router.post(
   '/venues/:venueId/bookings',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   validate({ body: createBookingSchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -97,7 +97,7 @@ router.get(
 
 router.put(
   '/bookings/:bookingId',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   validate({ body: updateBookingSchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -111,7 +111,7 @@ router.put(
 
 router.delete(
   '/bookings/:bookingId',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await venuesService.cancelBooking(req.params.orgId, req.params.bookingId, req.user!.id, req.user!.role);

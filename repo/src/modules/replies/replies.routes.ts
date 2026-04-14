@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { validate } from '../../middleware/validate';
 import { authMiddleware } from '../../middleware/auth';
+import { denyRole } from '../../middleware/rbac';
 import { orgScopeMiddleware } from '../../middleware/orgScope';
 import { checkBanMuteMiddleware } from '../../middleware/checkBanMute';
 import { writeRateLimiter, readRateLimiter } from '../../middleware/rateLimiter';
@@ -12,7 +13,7 @@ const router = Router({ mergeParams: true });
 // POST /api/organizations/:orgId/threads/:threadId/replies
 router.post(
   '/threads/:threadId/replies',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   validate({ body: createReplySchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -40,7 +41,7 @@ router.get(
 // PUT /api/organizations/:orgId/replies/:replyId
 router.put(
   '/replies/:replyId',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   validate({ body: updateReplySchema }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -55,7 +56,7 @@ router.put(
 // DELETE /api/organizations/:orgId/replies/:replyId
 router.delete(
   '/replies/:replyId',
-  authMiddleware, orgScopeMiddleware, checkBanMuteMiddleware, writeRateLimiter,
+  authMiddleware, orgScopeMiddleware, denyRole('analyst'), checkBanMuteMiddleware, writeRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await repliesService.deleteReply(req.params.orgId, req.params.replyId, req.user!.id, req.user!.role);

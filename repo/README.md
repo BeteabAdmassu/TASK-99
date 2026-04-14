@@ -170,8 +170,10 @@ All environment variables have defaults in `docker-compose.yml`. No `.env` file 
 - **Feature flags**: Database-stored, audited configuration toggles
 - **Security**: bcrypt passwords, AES-256-GCM encryption, JWT auth, rate limiting
 - **Nightly backups**: Automated MySQL dumps with 14-day retention
-- **Point-in-time recovery**: Binlog-enabled restore — see [`docs/pitr-restore.md`](../docs/pitr-restore.md)
+- **Point-in-time recovery**: Binlog-enabled restore via `mysqlbinlog` replay against nightly `.sql.gz` dumps
 
 ## Database Backup and Recovery
 
-The database runs with binlog enabled (`--binlog-format=ROW`). Nightly logical backups are written to the `backups` Docker volume. For full restore and point-in-time recovery procedures, including the binlog replay sequence and verification checklist, see the dedicated runbook at **`docs/pitr-restore.md`**.
+The database runs with binlog enabled (`--binlog-format=ROW`). Nightly logical backups are written to the `backups` Docker volume.
+
+To restore to a point in time: decompress the nearest prior dump into the database, then use `mysqlbinlog --start-position=<pos> --stop-datetime=<target>` to extract and replay the binlog events that followed the dump. Verify row counts and the maximum `created_at` value in `audit_logs` to confirm the recovery point.
