@@ -26,6 +26,14 @@ export const updateBookingSchema = z.object({
   title: z.string().min(1).max(255).trim().optional(),
   startTime: z.string().datetime().optional(),
   endTime: z.string().datetime().optional(),
+}).refine((data) => {
+  if (data.startTime && data.endTime) {
+    return new Date(data.endTime) > new Date(data.startTime);
+  }
+  return true;
+}, {
+  message: 'End time must be after start time',
+  path: ['endTime'],
 });
 
 export const listBookingsQuerySchema = z.object({

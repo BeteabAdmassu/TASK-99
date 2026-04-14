@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
@@ -39,6 +40,8 @@ export async function createReport(
       reporter: { select: { id: true, username: true } },
     },
   });
+
+  logger.info({ orgId, threadId, reportId: report.id }, 'Report created');
 
   return report;
 }

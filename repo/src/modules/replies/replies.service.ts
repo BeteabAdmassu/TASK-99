@@ -1,7 +1,9 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError, ForbiddenError, BusinessRuleError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
+import { createForNewReply } from '../notifications/notifications.service';
 
 interface CreateReplyData {
   body: string;
@@ -83,6 +85,11 @@ export async function createReply(
       metadata: { threadId, replyId: reply.id },
     },
   });
+
+  logger.info({ orgId, threadId, replyId: reply.id }, 'Reply created');
+
+  // Trigger notification for thread author (fire-and-forget)
+  createForNewReply(orgId, threadId, userId, reply.id).catch(() => {});
 
   return reply;
 }

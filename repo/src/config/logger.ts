@@ -11,6 +11,7 @@ export const logger = pino({
       '*.passwordHash',
       '*.password_hash',
       '*.token',
+      '*.email',
       '*.emailEncrypted',
       '*.email_encrypted',
       '*.currentPassword',

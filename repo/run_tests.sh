@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# Don't use set -e since we accumulate test failures
 
 BASE_URL="http://localhost:3000/api"
 ORG_ID="00000000-0000-0000-0000-000000000001"
@@ -243,6 +243,17 @@ check_status "$RESP" "403" "Reply to locked thread returns 403" > /dev/null
 
 # Unlock for further tests
 RESP=$(request PUT "$BASE_URL/organizations/$ORG_ID/threads/$THREAD_ID/state" "{\"isLocked\":false}")
+
+# Archive thread and try edit
+RESP=$(request PUT "$BASE_URL/organizations/$ORG_ID/threads/$THREAD_ID/state" "{\"isArchived\":true}")
+check_status "$RESP" "200" "Archive thread returns 200" > /dev/null
+
+RESP=$(request PUT "$BASE_URL/organizations/$ORG_ID/threads/$THREAD_ID" "{\"title\":\"Should fail archived\"}")
+check_status "$RESP" "403" "Edit archived thread returns 403" > /dev/null
+
+# Un-archive for further tests
+RESP=$(request PUT "$BASE_URL/organizations/$ORG_ID/threads/$THREAD_ID/state" "{\"isArchived\":false}")
+check_status "$RESP" "200" "Un-archive thread" > /dev/null
 
 # ==========================================
 # TEST: Reports

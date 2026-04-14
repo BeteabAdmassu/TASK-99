@@ -278,31 +278,40 @@ export async function updateBooking(
   const newStartTime = data.startTime ? new Date(data.startTime) : undefined;
   const newEndTime = data.endTime ? new Date(data.endTime) : undefined;
 
-  // If changing times, re-run conflict check excluding this booking
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+
+  // If changing times, run conflict check + update inside a transaction
   if (newStartTime || newEndTime) {
     const checkStart = newStartTime ?? booking.startTime;
     const checkEnd = newEndTime ?? booking.endTime;
-
-    const conflicting = await prisma.venueBooking.findFirst({
-      where: {
-        venueId: booking.venueId,
-        status: 'confirmed',
-        id: { not: bookingId },
-        startTime: { lt: checkEnd },
-        endTime: { gt: checkStart },
-      },
-    });
-
-    if (conflicting) {
-      throw new BusinessRuleError(409, 'BOOKING_CONFLICT', 'Time slot overlaps with an existing booking');
-    }
-
     if (newStartTime) updateData.startTime = newStartTime;
     if (newEndTime) updateData.endTime = newEndTime;
-  }
 
-  if (data.status !== undefined) {
-    updateData.status = data.status;
+    const updated = await prisma.$transaction(async (tx) => {
+      const conflicting = await tx.venueBooking.findFirst({
+        where: {
+          venueId: booking.venueId,
+          status: 'confirmed',
+          id: { not: bookingId },
+          startTime: { lt: checkEnd },
+          endTime: { gt: checkStart },
+        },
+      });
+
+      if (conflicting) {
+        throw new BusinessRuleError(409, 'BOOKING_CONFLICT', 'Time slot overlaps with an existing booking');
+      }
+
+      return tx.venueBooking.update({
+        where: { id: bookingId },
+        data: updateData,
+      });
+    });
+
+    logger.info({ bookingId, orgId, userId }, 'Booking updated');
+    return updated;
   }
 
   const updated = await prisma.venueBooking.update({

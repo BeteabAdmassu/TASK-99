@@ -7,6 +7,7 @@ import { encryptField, decryptField } from '../../config/encryption';
 import { NotFoundError, ConflictError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
+import { createForModeration } from '../notifications/notifications.service';
 
 interface CreateUserData {
   username: string;
@@ -204,6 +205,9 @@ export async function banUser(
 
   logger.info({ userId, actorId, reason }, 'User banned');
 
+  // Notify the banned user (fire-and-forget)
+  createForModeration(orgId, userId, 'ban', { reason: reason ?? null }).catch(() => {});
+
   return formatUserResponse(updated as unknown as Record<string, unknown>);
 }
 
@@ -286,6 +290,9 @@ export async function muteUser(
   });
 
   logger.info({ userId, actorId, durationHours, mutedUntil }, 'User muted');
+
+  // Notify the muted user (fire-and-forget)
+  createForModeration(orgId, userId, 'mute', { durationHours, mutedUntil: mutedUntil.toISOString(), reason: reason ?? null }).catch(() => {});
 
   return formatUserResponse(updated as unknown as Record<string, unknown>);
 }

@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError, ConflictError } from '../../utils/errors';
 import { Prisma } from '@prisma/client';
 
@@ -15,6 +16,8 @@ export async function createTag(
         category: data.category,
       },
     });
+
+    logger.info({ orgId, tagId: tag.id }, 'Tag created');
 
     return tag;
   } catch (error) {

@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError, ForbiddenError, BusinessRuleError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
@@ -61,6 +62,8 @@ export async function createThread(
       threadTags: { include: { tag: true } },
     },
   });
+
+  logger.info({ orgId, threadId: thread.id }, 'Thread created');
 
   if (data.tagIds && data.tagIds.length > 0) {
     await prisma.threadTag.createMany({

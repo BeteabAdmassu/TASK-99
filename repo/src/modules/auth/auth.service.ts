@@ -13,6 +13,7 @@ export async function login(
   password: string,
   organizationId: string,
   ipAddress?: string,
+  correlationId?: string,
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -86,6 +87,7 @@ export async function login(
         resourceId: user.id,
         details: { reason: 'Too many failed login attempts' },
         ipAddress,
+        correlationId,
       });
     }
 
@@ -96,6 +98,7 @@ export async function login(
       resourceType: 'user',
       resourceId: user.id,
       ipAddress,
+      correlationId,
     });
 
     throw new UnauthorizedError('Invalid username or password');
@@ -131,6 +134,7 @@ export async function login(
     resourceType: 'user',
     resourceId: user.id,
     ipAddress,
+    correlationId,
   });
 
   // Create event log for page_view on successful login

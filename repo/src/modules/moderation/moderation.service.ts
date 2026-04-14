@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError, ValidationError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
@@ -126,6 +127,8 @@ export async function bulkAction(
       errors: errors.length > 0 ? errors : undefined,
     },
   });
+
+  logger.info({ orgId, action: data.action, processed, failed }, 'Bulk action completed');
 
   return { processed, failed, errors };
 }

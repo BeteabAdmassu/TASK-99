@@ -94,14 +94,15 @@ export async function createForModeration(
   orgId: string,
   userId: string,
   action: string,
-  details: string,
+  details: string | Record<string, unknown>,
 ) {
+  const body = typeof details === 'string' ? details : JSON.stringify(details);
   const notification = await createNotification({
     orgId,
     userId,
     type: 'moderation_action',
     title: `Moderation action: ${action}`,
-    body: details,
+    body,
     referenceType: 'moderation',
   });
 

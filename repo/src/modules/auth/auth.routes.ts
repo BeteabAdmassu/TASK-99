@@ -14,7 +14,7 @@ router.post(
     try {
       const { username, password, organizationId } = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress;
-      const result = await authService.login(username, password, organizationId, ipAddress);
+      const result = await authService.login(username, password, organizationId, ipAddress, req.correlationId);
       res.status(200).json(result);
     } catch (err) {
       next(err);

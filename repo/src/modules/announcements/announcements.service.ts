@@ -1,7 +1,9 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError } from '../../utils/errors';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
 import { createAuditLog } from '../audit/audit.service';
+import { createForAnnouncement } from '../notifications/notifications.service';
 
 interface CreateAnnouncementData {
   title: string;
@@ -41,6 +43,8 @@ export async function createAnnouncement(
       endDate: new Date(data.endDate),
     },
   });
+
+  logger.info({ orgId, announcementId: announcement.id }, 'Announcement created');
 
   await createAuditLog({
     organizationId: orgId,
@@ -131,6 +135,11 @@ export async function updateAnnouncement(
     resourceId: id,
     details: { operation: 'update', updatedFields: Object.keys(updateData) },
   });
+
+  // Trigger notification when announcement is published
+  if (data.isPublished === true && !existing.isPublished) {
+    createForAnnouncement(orgId, id, updated.title).catch(() => {});
+  }
 
   return updated;
 }

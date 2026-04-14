@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError } from '../../utils/errors';
 
 export async function createSection(
@@ -13,6 +14,8 @@ export async function createSection(
       displayOrder: data.displayOrder ?? 0,
     },
   });
+
+  logger.info({ orgId, sectionId: section.id }, 'Section created');
 
   return section;
 }

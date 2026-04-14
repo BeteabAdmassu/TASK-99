@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { logger } from '../../config/logger';
 import { NotFoundError } from '../../utils/errors';
 import { createAuditLog } from '../audit/audit.service';
 
@@ -38,6 +39,8 @@ export async function createCarouselItem(
       endDate: new Date(data.endDate),
     },
   });
+
+  logger.info({ orgId, itemId: item.id }, 'Carousel item created');
 
   await createAuditLog({
     organizationId: orgId,
