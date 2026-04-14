@@ -14,7 +14,7 @@ RUN npx tsc
 
 FROM node:20-alpine
 
-RUN apk add --no-cache mysql-client
+RUN apk add --no-cache mysql-client openssl
 
 WORKDIR /app
 

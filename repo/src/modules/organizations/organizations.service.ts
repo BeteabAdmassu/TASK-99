@@ -21,7 +21,7 @@ export async function createOrganization(data: CreateOrganizationData) {
       data: {
         name: data.name,
         slug: data.slug,
-        settings: data.settings ?? null,
+        settings: data.settings as Prisma.InputJsonValue | undefined,
       },
     });
 
@@ -65,7 +65,7 @@ export async function updateOrganization(
     where: { id },
     data: {
       ...(data.name !== undefined && { name: data.name }),
-      ...(data.settings !== undefined && { settings: data.settings }),
+      ...(data.settings !== undefined && { settings: data.settings as Prisma.InputJsonValue }),
     },
   });
 

@@ -119,7 +119,7 @@ export async function login(
     {
       userId: user.id,
       organizationId: user.organizationId,
-      role: user.role,
+      role: user.role as string,
       jti,
     },
     env.JWT_SECRET,

@@ -15,12 +15,12 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 pass() {
-  echo -e "${GREEN}PASS${NC}: $1"
+  echo -e "${GREEN}PASS${NC}: $1" >&2
   PASS=$((PASS + 1))
 }
 
 fail() {
-  echo -e "${RED}FAIL${NC}: $1 - $2"
+  echo -e "${RED}FAIL${NC}: $1 - $2" >&2
   FAIL=$((FAIL + 1))
 }
 
@@ -40,25 +40,21 @@ echo "Service is healthy!"
 
 # Helper: make request and capture HTTP code + body
 request() {
-  local METHOD=$1
-  local URL=$2
-  local DATA=$3
-  local AUTH_HEADER=""
+  local METHOD="$1"
+  local URL="$2"
+  local DATA="$3"
+
+  local args=(-s -w $'\n%{http_code}' -X "$METHOD" "$URL" -H "Content-Type: application/json")
 
   if [ -n "$TOKEN" ]; then
-    AUTH_HEADER="-H \"Authorization: Bearer $TOKEN\""
+    args+=(-H "Authorization: Bearer $TOKEN")
   fi
 
   if [ -n "$DATA" ]; then
-    eval curl -s -w "\n%{http_code}" -X "$METHOD" "$URL" \
-      -H "Content-Type: application/json" \
-      $AUTH_HEADER \
-      -d "'$DATA'"
-  else
-    eval curl -s -w "\n%{http_code}" -X "$METHOD" "$URL" \
-      -H "Content-Type: application/json" \
-      $AUTH_HEADER
+    args+=(-d "$DATA")
   fi
+
+  curl "${args[@]}"
 }
 
 check_status() {

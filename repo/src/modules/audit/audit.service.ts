@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/database';
 import { logger } from '../../config/logger';
 import { parsePagination, buildPaginatedResponse } from '../../utils/pagination';
@@ -34,7 +35,7 @@ export async function createAuditLog(data: CreateAuditLogData) {
       action: data.action,
       resourceType: data.resourceType ?? null,
       resourceId: data.resourceId ?? null,
-      details: data.details ?? null,
+      details: data.details as Prisma.InputJsonValue | undefined,
       ipAddress: data.ipAddress ?? null,
       correlationId: data.correlationId ?? null,
     },

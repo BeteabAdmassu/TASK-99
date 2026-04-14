@@ -31,7 +31,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: mysql://civicforum:civicforum_pass@mysql:3306/civicforum
       JWT_SECRET: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
-      JWT_EXPIRES_IN: 24h
+      JWT_EXPIRES_IN: 86400
       BCRYPT_ROUNDS: 12
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       RATE_LIMIT_WRITE: 120
