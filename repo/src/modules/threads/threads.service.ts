@@ -244,23 +244,10 @@ export async function updateThread(
     throw new ForbiddenError('You do not have permission to update this thread');
   }
 
-  const updateData: Record<string, unknown> = {};
-  if (data.title !== undefined) updateData.title = data.title;
-  if (data.body !== undefined) updateData.body = data.body;
-
-  const updated = await prisma.thread.update({
-    where: { id: threadId },
-    data: updateData,
-    include: {
-      author: { select: { id: true, username: true } },
-      threadTags: { include: { tag: true } },
-    },
-  });
-
+  // When tagIds is present the entire update must be all-or-nothing:
+  // validate tag ownership first, then apply field changes + tag replacement
+  // in one transaction so an invalid tag never leaves title/body partially written.
   if (data.tagIds !== undefined) {
-    // Validate replacement tags before touching the existing mappings.
-    // This prevents deleteMany from running if the new tags are invalid,
-    // which would otherwise leave the thread with no tags at all.
     if (data.tagIds.length > 0) {
       const validTags = await prisma.tag.findMany({
         where: { id: { in: data.tagIds }, organizationId: orgId },
@@ -271,8 +258,14 @@ export async function updateThread(
       }
     }
 
-    // Delete existing mappings and create new ones atomically.
+    const fieldData: Record<string, unknown> = {};
+    if (data.title !== undefined) fieldData.title = data.title;
+    if (data.body !== undefined) fieldData.body = data.body;
+
     await prisma.$transaction(async (tx) => {
+      if (Object.keys(fieldData).length > 0) {
+        await tx.thread.update({ where: { id: threadId }, data: fieldData });
+      }
       await tx.threadTag.deleteMany({ where: { threadId } });
       if (data.tagIds!.length > 0) {
         await tx.threadTag.createMany({
@@ -291,6 +284,20 @@ export async function updateThread(
     });
     return refreshed;
   }
+
+  // No tagIds — simple field-only update path, unchanged.
+  const updateData: Record<string, unknown> = {};
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.body !== undefined) updateData.body = data.body;
+
+  const updated = await prisma.thread.update({
+    where: { id: threadId },
+    data: updateData,
+    include: {
+      author: { select: { id: true, username: true } },
+      threadTags: { include: { tag: true } },
+    },
+  });
 
   return updated;
 }

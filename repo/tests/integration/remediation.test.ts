@@ -806,6 +806,61 @@ describe('Thread tag atomicity', () => {
     await prisma.tag.delete({ where: { id: validTag.id } });
     await prisma.tag.delete({ where: { id: foreignTag.id } });
   });
+
+  it('updateThread with invalid tag + title change returns 400 and title is not persisted', async () => {
+    const originalTitle = 'Atomic Title Original ' + Date.now();
+
+    const validTag = await prisma.tag.create({
+      data: {
+        organizationId: ORG_ID,
+        name: 'AtomicValidTag2_' + Date.now(),
+        slug: 'atomic-valid2-' + Date.now(),
+      },
+    });
+
+    const createRes = await request(app)
+      .post(`/api/organizations/${ORG_ID}/threads`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        subsectionId: atomicSubsectionId,
+        title: originalTitle,
+        body: 'Original body',
+        tagIds: [validTag.id],
+      });
+    expect(createRes.status).toBe(201);
+    const threadId = createRes.body.thread.id;
+
+    const foreignTag = await prisma.tag.create({
+      data: {
+        organizationId: SECOND_ORG_ID,
+        name: 'AtomicForeignTag3_' + Date.now(),
+        slug: 'atomic-foreign3-' + Date.now(),
+      },
+    });
+
+    // Send both a title change and an invalid tagId
+    const updateRes = await request(app)
+      .put(`/api/organizations/${ORG_ID}/threads/${threadId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ title: 'Should Not Be Saved', tagIds: [foreignTag.id] });
+
+    expect(updateRes.status).toBe(400);
+    expect(updateRes.body.error?.code).toBe('INVALID_TAG');
+
+    // Title must not have changed — the transaction was rolled back
+    const row = await prisma.thread.findUnique({ where: { id: threadId } });
+    expect(row!.title).toBe(originalTitle);
+
+    // Original tag mapping must still be intact
+    const tagCount = await prisma.threadTag.count({ where: { threadId, tagId: validTag.id } });
+    expect(tagCount).toBe(1);
+
+    // Cleanup
+    await prisma.threadTag.deleteMany({ where: { threadId } });
+    await prisma.thread.delete({ where: { id: threadId } });
+    await prisma.tag.delete({ where: { id: validTag.id } });
+    await prisma.tag.delete({ where: { id: foreignTag.id } });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
