@@ -37,7 +37,8 @@
 
 - Status: Fixed
 - Evidence:
-  - docs/pitr-restore.md:33 now uses placeholder `DB_ROOT_PASS="<MYSQL_ROOT_PASSWORD>"`
+  - docs/pitr-restore.md was removed per documentation cleanup (docs/ now contains only api-spec.md, design.md, questions.md)
+  - PITR guidance (including placeholder credential variables) is inlined in repo/README.md lines 173–181 under "Database Backup and Recovery"
   - repo/docker-compose.yml:14 documents current compose root password source
 
 ### 5) Seeded admin password hardcoded constant removal
@@ -48,14 +49,23 @@
   - repo/prisma/seed.ts:10 fails fast if missing
   - repo/README.md:32 explains password source is `SEED_ADMIN_PASSWORD`
 
-## Additional Static Finding
+## Additional Static Findings
+
+### TypeScript diagnostic in `threads.service.ts`
 
 - Status: Resolved
-- Previous finding: TypeScript diagnostic in `threads.service.ts`
 - Resolution evidence:
   - repo/src/modules/threads/threads.service.ts no longer imports `@prisma/client` directly.
   - Local transaction client typing is derived from the prisma singleton (`type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];`).
-  - Workspace diagnostics check returned no errors.
+
+### Deprecated `moduleResolution` compiler option
+
+- Status: Resolved
+- Previous state: repo/tsconfig.json used `"moduleResolution": "node10"` (deprecated in TypeScript 5.0+) suppressed by `"ignoreDeprecations": "5.0"`.
+- Resolution evidence:
+  - repo/tsconfig.json now sets `"moduleResolution": "node16"` (correct non-deprecated alias for `module: "commonjs"`).
+  - `"ignoreDeprecations": "5.0"` has been removed.
+  - Workspace diagnostics return no errors.
 
 ## Final Conclusion
 
