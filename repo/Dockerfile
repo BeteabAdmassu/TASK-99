@@ -12,6 +12,15 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc
 
+# ── Test runner (used by docker compose --profile test) ──────────────────
+FROM builder AS test-runner
+RUN apk add --no-cache openssl
+RUN npx prisma generate
+COPY jest.config.ts ./
+COPY tests ./tests
+CMD ["npx", "jest", "--forceExit", "--detectOpenHandles", "--verbose"]
+
+# ── Production runtime ───────────────────────────────────────────────────
 FROM node:20-alpine
 
 RUN apk add --no-cache mysql-client openssl

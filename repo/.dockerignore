@@ -6,7 +6,6 @@ dist
 .env.*
 .tmp
 coverage
-tests
 *.md
 !README.md
 docker-compose*.yml

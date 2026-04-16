@@ -772,7 +772,7 @@ describe('Organization creation: requires platform admin (403 for others)', () =
   let secondaryOrgId: string;
 
   beforeAll(async () => {
-    const pwHash = await bcrypt.hash('TestPass1!', 4);
+    const pwHash = await bcrypt.hash('TestPassword1!', 4);
 
     // Regular user lives in the platform org — role alone is insufficient.
     const regularUser = await prisma.user.create({
@@ -781,7 +781,7 @@ describe('Organization creation: requires platform admin (403 for others)', () =
     regularUserId = regularUser.id;
     const loginRegular = await request(app)
       .post('/api/auth/login')
-      .send({ username: regularUser.username, password: 'TestPass1!', organizationId: ORG_ID });
+      .send({ username: regularUser.username, password: 'TestPassword1!', organizationId: ORG_ID });
     regularUserToken = loginRegular.body.token;
 
     // Create a secondary (non-platform) org directly via Prisma.
@@ -799,7 +799,7 @@ describe('Organization creation: requires platform admin (403 for others)', () =
     orgAdminId = orgAdmin.id;
     const loginOrgAdmin = await request(app)
       .post('/api/auth/login')
-      .send({ username: orgAdmin.username, password: 'TestPass1!', organizationId: secondaryOrgId });
+      .send({ username: orgAdmin.username, password: 'TestPassword1!', organizationId: secondaryOrgId });
     orgAdminToken = loginOrgAdmin.body.token;
   });
 
@@ -837,7 +837,7 @@ describe('Feature flags: admin-only create endpoint (403 for non-admin)', () => 
   let analystId: string;
 
   beforeAll(async () => {
-    const pwHash = await bcrypt.hash('TestPass1!', 4);
+    const pwHash = await bcrypt.hash('TestPassword1!', 4);
 
     const mod = await prisma.user.create({
       data: { organizationId: ORG_ID, username: 'mod_ff_' + Date.now(), passwordHash: pwHash, role: 'moderator' },
@@ -845,7 +845,7 @@ describe('Feature flags: admin-only create endpoint (403 for non-admin)', () => 
     moderatorId = mod.id;
     const loginMod = await request(app)
       .post('/api/auth/login')
-      .send({ username: mod.username, password: 'TestPass1!', organizationId: ORG_ID });
+      .send({ username: mod.username, password: 'TestPassword1!', organizationId: ORG_ID });
     moderatorToken = loginMod.body.token;
 
     const analyst = await prisma.user.create({
@@ -854,7 +854,7 @@ describe('Feature flags: admin-only create endpoint (403 for non-admin)', () => 
     analystId = analyst.id;
     const loginAnalyst = await request(app)
       .post('/api/auth/login')
-      .send({ username: analyst.username, password: 'TestPass1!', organizationId: ORG_ID });
+      .send({ username: analyst.username, password: 'TestPassword1!', organizationId: ORG_ID });
     analystToken = loginAnalyst.body.token;
   });
 

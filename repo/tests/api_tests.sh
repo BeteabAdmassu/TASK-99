@@ -61,13 +61,57 @@ check_status() {
   echo "$BODY"
 }
 
+# Deep contract helpers — validate response body fields via jq
+check_json() {
+  local BODY="$1"
+  local JQ_EXPR="$2"
+  local EXPECTED="$3"
+  local TEST_NAME="$4"
+
+  local ACTUAL=$(echo "$BODY" | jq -r "$JQ_EXPR // empty" 2>/dev/null)
+  if [ "$ACTUAL" = "$EXPECTED" ]; then
+    pass "$TEST_NAME"
+  else
+    fail "$TEST_NAME" "Expected '$EXPECTED', got '$ACTUAL'"
+  fi
+}
+
+check_json_exists() {
+  local BODY="$1"
+  local JQ_EXPR="$2"
+  local TEST_NAME="$3"
+
+  local ACTUAL=$(echo "$BODY" | jq -r "$JQ_EXPR // empty" 2>/dev/null)
+  if [ -n "$ACTUAL" ]; then
+    pass "$TEST_NAME"
+  else
+    fail "$TEST_NAME" "Field $JQ_EXPR is empty or missing"
+  fi
+}
+
+check_json_absent() {
+  local BODY="$1"
+  local JQ_EXPR="$2"
+  local TEST_NAME="$3"
+
+  local ACTUAL=$(echo "$BODY" | jq -r "$JQ_EXPR // empty" 2>/dev/null)
+  if [ -z "$ACTUAL" ]; then
+    pass "$TEST_NAME"
+  else
+    fail "$TEST_NAME" "Field $JQ_EXPR should not exist but has value: $ACTUAL"
+  fi
+}
+
 # ==========================================
 # TEST: Health Check
 # ==========================================
 echo ""
 echo "=== Health Check ==="
 RESP=$(request GET "$BASE_URL/health")
-check_status "$RESP" "200" "Health check returns 200" > /dev/null
+BODY=$(check_status "$RESP" "200" "Health check returns 200")
+check_json "$BODY" '.status' 'ok' "Health response status is ok"
+check_json_exists "$BODY" '.timestamp' "Health response has timestamp"
+check_json_exists "$BODY" '.version' "Health response has version"
 
 # ==========================================
 # TEST: Auth - Login
@@ -82,10 +126,15 @@ if [ -n "$TOKEN" ]; then
 else
   fail "Login returns JWT token" "No token in response"
 fi
+check_json "$BODY" '.user.role' 'admin' "Login user role is admin"
+check_json "$BODY" '.user.username' 'admin' "Login user username is admin"
+check_json_exists "$BODY" '.user.id' "Login user has id"
+check_json_absent "$BODY" '.user.passwordHash' "Login response has no passwordHash"
 
 # TEST: Login with wrong password
 RESP=$(request POST "$BASE_URL/auth/login" "{\"username\":\"$ADMIN_USER\",\"password\":\"WrongPassword1!\",\"organizationId\":\"$ORG_ID\"}")
-check_status "$RESP" "401" "Login with wrong password returns 401" > /dev/null
+BODY=$(check_status "$RESP" "401" "Login with wrong password returns 401")
+check_json "$BODY" '.error.code' 'UNAUTHORIZED' "401 error code is UNAUTHORIZED"
 
 # TEST: Login with short password (validation)
 RESP=$(request POST "$BASE_URL/auth/login" "{\"username\":\"$ADMIN_USER\",\"password\":\"short\",\"organizationId\":\"$ORG_ID\"}")
@@ -118,9 +167,14 @@ echo "=== Users ==="
 RESP=$(request POST "$BASE_URL/organizations/$ORG_ID/users" "{\"username\":\"testuser1\",\"password\":\"TestPassword123!\"}")
 BODY=$(check_status "$RESP" "201" "Create user returns 201")
 USER_ID=$(echo "$BODY" | jq -r '.user.id // empty')
+check_json_exists "$BODY" '.user.id' "Created user has id"
+check_json "$BODY" '.user.username' 'testuser1' "Created user username matches"
+check_json_absent "$BODY" '.user.passwordHash' "Created user has no passwordHash"
 
 RESP=$(request GET "$BASE_URL/organizations/$ORG_ID/users")
-check_status "$RESP" "200" "List users returns 200" > /dev/null
+BODY=$(check_status "$RESP" "200" "List users returns 200")
+check_json_exists "$BODY" '.total' "List users has total count"
+check_json_exists "$BODY" '.data' "List users has data array"
 
 # Duplicate username
 RESP=$(request POST "$BASE_URL/organizations/$ORG_ID/users" "{\"username\":\"testuser1\",\"password\":\"TestPassword123!\"}")
@@ -175,6 +229,8 @@ fi
 RESP=$(request POST "$BASE_URL/organizations/$ORG_ID/threads" "{\"subsectionId\":\"$SUBSECTION_ID\",\"title\":\"First Thread\",\"body\":\"This is the body of the first thread.\",\"tagIds\":$TAG_IDS_ARR}")
 BODY=$(check_status "$RESP" "201" "Create thread returns 201")
 THREAD_ID=$(echo "$BODY" | jq -r '.thread.id // empty')
+check_json "$BODY" '.thread.title' 'First Thread' "Created thread title matches"
+check_json_exists "$BODY" '.thread.authorId' "Created thread has authorId"
 
 RESP=$(request GET "$BASE_URL/organizations/$ORG_ID/threads?subsectionId=$SUBSECTION_ID")
 check_status "$RESP" "200" "List threads returns 200" > /dev/null
@@ -698,11 +754,14 @@ check_status "$RESP" "404" "Unknown route returns 404" > /dev/null
 
 # Non-existent resource
 RESP=$(request GET "$BASE_URL/organizations/$ORG_ID/threads/00000000-0000-0000-0000-000000000099")
-check_status "$RESP" "404" "Non-existent thread returns 404" > /dev/null
+BODY=$(check_status "$RESP" "404" "Non-existent thread returns 404")
+check_json "$BODY" '.error.code' 'NOT_FOUND' "404 error code is NOT_FOUND"
+check_json_exists "$BODY" '.error.message' "404 error has message"
 
 # Access wrong org
 RESP=$(request GET "$BASE_URL/organizations/00000000-0000-0000-0000-999999999999")
-check_status "$RESP" "403" "Wrong organization returns 403" > /dev/null
+BODY=$(check_status "$RESP" "403" "Wrong organization returns 403")
+check_json_exists "$BODY" '.error.code' "403 error has code"
 
 # ==========================================
 # TEST: User Ban/Mute
