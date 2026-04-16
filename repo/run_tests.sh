@@ -7,10 +7,13 @@ set -euo pipefail
 BASE_URL="http://localhost:3000/api"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Bring services up (idempotent — no-op if already running, starts them if
-# the CI harness stopped containers between the build and test phases).
-echo "Starting services..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+# Start services only when app container is not already running.
+if docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps --services --filter "status=running" | grep -qx "app"; then
+  echo "App container already running; skipping docker compose up"
+else
+  echo "App container not running; starting services..."
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+fi
 set +e   # health-check loop must not abort on non-zero curl exit
 
 # Wait for service to be healthy before running any tests
